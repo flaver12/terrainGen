@@ -11,7 +11,7 @@ public class EndlessTerrain : MonoBehaviour {
 	public Material material;
 
 	private Vector2 playerPositionOld;
-	private const float SCALE = 5f;
+	private const float SCALE = 2f;
 	private const float PLAYER_MOVE_THRESHOLD_FOR_CHUNK_UPDATE = 25f;
 	private const float SQR_PLAYER_MOVE_THRESHOLD_FOR_CHUNK_UPDATE = PLAYER_MOVE_THRESHOLD_FOR_CHUNK_UPDATE * PLAYER_MOVE_THRESHOLD_FOR_CHUNK_UPDATE;
 	private static MapGenerator mapGenerator;
@@ -67,8 +67,10 @@ public class EndlessTerrain : MonoBehaviour {
 		Bounds bounds;
 		MeshRenderer meshRenderer;
 		MeshFilter meshFilter;
+		MeshCollider meshCollider;
 		LODInfo[] detailLevels;
 		LODMesh[] lodMeshes;
+		LODMesh collisionLODMesh;
 		MapData mapData;
 		bool mapDataReceived;
 		int prevLODIndex = -1; 
@@ -82,6 +84,7 @@ public class EndlessTerrain : MonoBehaviour {
 			meshObject = new GameObject("Terrain Chunk");
 			meshRenderer = meshObject.AddComponent<MeshRenderer>();
 			meshFilter = meshObject.AddComponent<MeshFilter>();
+			meshCollider = meshObject.AddComponent<MeshCollider>();
 			meshRenderer.material = material;
 			meshObject.transform.position = positionV3 * SCALE;
 			meshObject.transform.parent = paranet;
@@ -91,6 +94,10 @@ public class EndlessTerrain : MonoBehaviour {
 			lodMeshes = new LODMesh[detailLevels.Length];
 			for (int i = 0; i < detailLevels.Length; i++) {
 				lodMeshes[i] = new LODMesh(detailLevels[i].lod, updateTerrianChunk);
+
+				if(detailLevels[i].useForCollider) {
+					collisionLODMesh = lodMeshes[i];
+				}
 			}
 
 			mapGenerator.requestMapData(position, OnMapDataReceived);
@@ -132,6 +139,13 @@ public class EndlessTerrain : MonoBehaviour {
 						}
 					}
 
+					if (lodIndex == 0) {
+						if (collisionLODMesh.hasMesh) {
+							meshCollider.sharedMesh = collisionLODMesh.mesh;
+						} else if (!collisionLODMesh.hasRequestedMesh) {
+							collisionLODMesh.requestMesh (mapData);
+						}
+					}
 					terrainChunksVisibleLastUpdate.Add (this);
 
 				}
@@ -180,5 +194,6 @@ public class EndlessTerrain : MonoBehaviour {
 	public struct LODInfo {
 		public int lod;
 		public float visibleDstThresHold;
+		public bool useForCollider;
 	}
 }
