@@ -8,9 +8,10 @@ public class MapGenerator : MonoBehaviour {
 
     public enum DrawMode { NoiseMap, ColourMap, Mesh};
     public DrawMode drawMode;
+	public Noise.NormalizeMode normalizeMode;
 	public const int mapChunkSize = 241;
 	[Range(0,6)]
-	public int levelOfDetail;
+	public int editorPreviewLOD;
     public int seed;
     public float noiseScale;
     public int octaves;
@@ -27,41 +28,41 @@ public class MapGenerator : MonoBehaviour {
 	private Queue<MapThreadInfo<MeshData>> meshDataThreadInfoQueue = new Queue<MapThreadInfo<MeshData>>();
 
 	public void drawMapInEditor() {
-		MapData mapData = generateMap ();
+		MapData mapData = generateMap (Vector2.zero);
 		MapDisplay display = FindObjectOfType<MapDisplay>();
 		if (drawMode == DrawMode.NoiseMap) {
 			display.drawTexture(TextureGenerator.textureFromHeightMap(mapData.heightMap));
 		} else if (drawMode == DrawMode.ColourMap) {
 			display.drawTexture(TextureGenerator.textureFromColourMap(mapData.colourMap, mapChunkSize, mapChunkSize));
 		} else if(drawMode == DrawMode.Mesh) {
-			display.drawMesh (MeshGenerator.generateTerrainMesh(mapData.heightMap, heightMultiplier, meshHeightCurve, levelOfDetail), TextureGenerator.textureFromColourMap(mapData.colourMap, mapChunkSize, mapChunkSize));
+			display.drawMesh (MeshGenerator.generateTerrainMesh(mapData.heightMap, heightMultiplier, meshHeightCurve, editorPreviewLOD), TextureGenerator.textureFromColourMap(mapData.colourMap, mapChunkSize, mapChunkSize));
 		}
 	}
 
-	public void requestMapData(Action<MapData> callback) {
+	public void requestMapData(Vector2 centre, Action<MapData> callback) {
 		ThreadStart threadStart = delegate {
-			mapDataThread (callback);
+			mapDataThread (centre, callback);
 		};
 
 		new Thread (threadStart).Start ();
 	}
 
-	public void requestMeshData(MapData mapData, Action<MeshData> callback) {
+	public void requestMeshData(MapData mapData, int lod, Action<MeshData> callback) {
 		ThreadStart threadStart = delegate {
-			meshDataThread(mapData, callback);
+			meshDataThread(mapData, lod, callback);
 		};
 		new Thread(threadStart).Start();
 	}
 
-	private void meshDataThread(MapData mapData, Action<MeshData> callback) {
-		MeshData meshData = MeshGenerator.generateTerrainMesh (mapData.heightMap, heightMultiplier, meshHeightCurve, levelOfDetail);
+	private void meshDataThread(MapData mapData, int lod, Action<MeshData> callback) {
+		MeshData meshData = MeshGenerator.generateTerrainMesh (mapData.heightMap, heightMultiplier, meshHeightCurve, lod);
 		lock (meshDataThreadInfoQueue) {
 			meshDataThreadInfoQueue.Enqueue (new MapThreadInfo<MeshData>(callback, meshData));
 		}
 	}
 
-	private void mapDataThread(Action<MapData> callback) {
-		MapData mapData = generateMap ();
+	private void mapDataThread(Vector2 centre, Action<MapData> callback) {
+		MapData mapData = generateMap (centre);
 		lock (mapDataThreadInfoQueue) {
 			mapDataThreadInfoQueue.Enqueue (new MapThreadInfo<MapData> (callback, mapData));
 		}
@@ -83,18 +84,19 @@ public class MapGenerator : MonoBehaviour {
 		}
 	}
 
-	private MapData generateMap() {
-        float[,] noiseMap = Noise.generateNoiseMap(mapChunkSize, mapChunkSize, seed, noiseScale, octaves, persistance, lacunarity, offset);
+	private MapData generateMap(Vector2 centre) {
+		float[,] noiseMap = Noise.generateNoiseMap(mapChunkSize, mapChunkSize, seed, noiseScale, octaves, persistance, lacunarity, centre + offset, normalizeMode);
         Color[] colourMap = new Color[mapChunkSize * mapChunkSize];
 
         for (int y = 0; y < mapChunkSize; y++) {
             for (int x = 0; x < mapChunkSize; x++) {
                 float currentHeight = noiseMap[x, y];
                 for (int i = 0; i < regions.Length; i++) {
-                    if (currentHeight <= regions[i].height) {
-                        colourMap[y * mapChunkSize + x] = regions[i].colour;
-                        break;
-                    }
+					if (currentHeight >= regions [i].height) {
+						colourMap [y * mapChunkSize + x] = regions [i].colour;
+					} else {
+						break;
+					}
                 }
             }
         }
